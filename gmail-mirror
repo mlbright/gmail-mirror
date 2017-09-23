@@ -108,6 +108,21 @@ sub imap_processor {
     my ( $mailbox, $local, @partial, @full );
     my ( $uid, $uidvalidity, $dir, $file, $fh );
 
+    my $four = sub {
+        $state = 4;
+        if (@mailboxes) {
+            $mailbox = shift @mailboxes;
+            print "Examining mailbox $mailbox\n";
+            $imap->writeln(qq{c EXAMINE "$mailbox"});
+            $state++;
+            return 1;
+        }
+        else {
+            $state = 8;
+        }
+        return 0;
+    };
+
     # And this is the IMAP processor, closed over all that state.
 
     return sub {
@@ -186,18 +201,7 @@ sub imap_processor {
             # Examine each mailbox in turn.
 
             if ( $state == 4 ) {
-        REEXAMINE:
-                $state = 4;
-                if ( @mailboxes ) {
-                    $mailbox = shift @mailboxes;
-                    print "Examining mailbox $mailbox\n";
-                    $imap->writeln( qq{c EXAMINE "$mailbox"} );
-                    $state++;
-                    next;
-                }
-                else {
-                    $state = 8;
-                }
+                next if ($four->() == 1);
             }
 
             # Set up the local mailbox based on the EXAMINE response and
@@ -255,21 +259,22 @@ sub imap_processor {
                 elsif ( $line =~ /^d OK /i ) {
                     unless ( @partial || @full ) {
                         print "Mailbox $mailbox is already in sync with $dir\n";
-                        goto REEXAMINE;
-                    }
+                        next if ($four->() == 1);
+                    } else {
+                        print "Fetching ", ~~@partial, "+", ~~@full, " messages\n";
 
-                    print "Fetching ", ~~@partial, "+", ~~@full, " messages\n";
+                        foreach ( @partial ) {
+                            $imap->writeln( $_ );
+                        }
 
-                    foreach ( @partial ) {
-                        $imap->writeln( $_ );
-                    }
-                    if ( @full ) {
-                        my $set = reduce_set( @full );
-                        $imap->writeln( qq{ff FETCH $set (UID BODY[])} );
-                    }
+                        if ( @full ) {
+                            my $set = reduce_set( @full );
+                            $imap->writeln( qq{ff FETCH $set (UID BODY[])} );
+                        }
 
-                    $state++;
-                    next;
+                        $state++;
+                        next;
+                    }
                 }
             }
 
@@ -313,7 +318,7 @@ sub imap_processor {
                 elsif ( $line =~ /^ff OK /i ) {
                     # We cheat and pay attention only to the very last
                     # OK response to the FETCHes we sent.
-                    goto REEXAMINE;
+                    next if ($four->() == 1);
                 }
             }
 
