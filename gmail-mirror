@@ -284,7 +284,7 @@ sub imap_processor {
             # literal is received.
 
             if ( $state == 7 ) {
-                if ( $line =~ /^\* \d+ FETCH \(UID (\d+) BODY\[\](?:<\d+>)? {(\d+)}$/ ) {
+                if ( $line =~ /^\* \d+ FETCH \(UID (\d+) BODY\[\](?:<\d+>)? \{(\d+)\}$/ ) {
                     ( $uid, $literal ) = ($1, $2);
                     $written = 0;
                     $file = "$dir/tmp/$uid";
